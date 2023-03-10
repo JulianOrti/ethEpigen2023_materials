@@ -1,0 +1,107 @@
+---
+title: "assignment"
+output: html_document
+date: "2023-03-03"
+---
+
+```{r}
+suppressPackageStartupMessages({
+  library(AnnotationHub)
+  library(ensembldb)
+  library(GenomicRanges)
+  library(epiwraps)
+})
+```
+
+```{r}
+ah <- AnnotationHub()
+# to query the AH programmatically:
+q <- query(ah, c("Mus Musculus", "EnsDb", "102"))
+q
+# to browse the AnnotationHub interactively:
+#display(ah)
+
+ensdb <- ah[["AH89211"]]
+ensdb
+```
+```{r}
+gene <- genes(ensdb)
+length(unique(gene))
+
+# we limit ourselves to protein-coding transcripts:
+genee <- genes(ensdb, filter=GeneBiotypeFilter("protein_coding"))
+
+length(genee$gene_id)        
+length(unique(genee$symbol))
+
+
+
+
+```
+```{r}
+# from the `ensembldb` package
+# genes(ensdb)
+# extract transcripts:
+txs <- transcripts(ensdb, filter=GeneBiotypeFilter("protein_coding"))
+txs
+seqlevels(txs)
+head(txs$tx_biotype)
+head(txs[,"tx_biotype"])
+table(seqnames(txs))
+table(txs$tx_biotype)
+
+# supportedFilters(), tx_biotype
+
+exs <- exons(ensdb, column=c("tx_id"))
+exs
+
+
+# we limit ourselves to protein-coding transcripts:
+exsPerTx <- exonsBy(ensdb, column=c("tx_id","tx_biotype"), 
+                    filter=TxBiotypeFilter("protein_coding"))
+exsPerTx
+
+# what are the transcripts that have more than on exon / sub-element:
+head(which(lengths(exsPerTx)>1))
+
+
+```
+
+```{r}
+
+# plot distribution of the (spliced) length of protein-coding transcripts
+# extract exons of protein-coding transcripts from the database, and split them by transcript, before summing the width of the exons of each transcript
+
+nbExonsPerPCtx <- lengths(exsPerTx)
+hist(nbExonsPerPCtx)
+
+exsPerTx <- exonsBy(ensdb, column=c("tx_id","tx_biotype"), 
+                    filter=TxBiotypeFilter("protein_coding"))
+
+```
+
+
+
+
+``` {r} 
+# to query the AH programmatically:
+mg <- query(ah, c("dna_sm", "2bit", "GRCm38","Mus Musculus"))
+mg
+# to browse the AnnotationHub interactively:
+#display(ah)
+
+ensdb <- ah[["AH82549"]]
+ensdb
+```
+```{r}
+ah <- AnnotationHub()
+# to query the AH programmatically:
+q <- query(ah, c("Drosophila", "ensembl"))
+# to browse the AnnotationHub interactively:
+#display(ah)
+
+ensdb <- ah[["AH95713"]]
+ensdb
+```
+
+
