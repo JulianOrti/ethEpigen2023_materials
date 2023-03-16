@@ -1,0 +1,102 @@
+---
+title: 'assignment 3 '
+output:
+  html_document: default
+  pdf_document: default
+date: "2023-03-16"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+suppressPackageStartupMessages({
+  library(AnnotationHub)
+  library(Rsubread)
+  library(rtracklayer)
+  library(Biostrings)
+  library(Rfastp)
+  library(epiwraps)
+})
+ah <- AnnotationHub()
+```
+
+
+
+We will perform the primary analysis of an example dataset, at each step demonstrating the use of both a very standard pipeline, and a full R-based equivalent. Pay attention to which chunks are R or bash code (see header)
+
+# Downloading the raw reads
+
+We download an example dataset which is a ChIP-seq experiment mapping the bindings
+of the factor Myc across the Kc167 Drosophila cell line.
+We download the data from ENCODE:
+
+```{r, eval=FALSE}
+dir.create("raw")
+download.file("https://www.encodeproject.org/files/ENCFF127RRR/@@download/ENCFF127RRR.fastq.gz", dest="raw/CTCF.fastq.gz")
+```
+### Building a genome index for mapping
+```{r, eval=FALSE}
+# we get the genome sequence from AnnotationHub
+genome <- ah[["AH49674"]]
+# we create a new directory that will contain the genome index
+dir.create("BDGP6_genome")
+# we write the genome sequence in fasta format
+export(import.2bit(genome), "BDGP6_genome/genome.fasta.gz", compress=TRUE)
+# we build a Rsubread index
+Rsubread::buildindex("BDGP6_genome/rsubread", reference="BDGP6_genome/genome.fasta.gz")
+```
+```{r}
+dir.create("aligned")
+getwd()
+```
+
+# Alignment of reads
+```{r, eval=FALSE}
+align.stats <- Rsubread::align(index="BDGP6_genome/rsubread", type="dna",
+                               readfile1=c("raw/CTCF.fastq.gz/"),
+                               output_file=c("aligned/CTCF.bam"),
+                               nthreads=6, sortReadsByCoordinates=TRUE)
+align.stats
+```
+
+
+Based on the alignment output, there is a total of 3,884,614 reads and 3,515,416 of those reads were mapped, which corresponds to 90.5% of the total reads. Out of the mapped reads, 3,057,440 were uniquely mapped and 457,976 were multi-mapped.
+
+These numbers provide a quantitative measure of the success of the alignment step, and the high mapping rate suggests that the data quality is good.
+
+However, it is worth noting that multi-mapping reads can be a potential source of ambiguity and may need to be further examined in downstream analyses.
+
+```{r}
+peaks <- callPeaks("aligned/CTCF.bam", fragLength=50L)
+# if we want to save it as a bed file:
+dir.create("peaks")
+rtracklayer::export.bed(peaks, "peaks/peaks.bed")
+```
+The function reported a total of 2873 regions, with 1622 having a false discovery rate (FDR) of less than 0.05.
+
+The output gives a total of 2873 candidate regions with potential enrichment of CTCF binding, and the identified peaks can be further examined in downstream analyses.
+
+```{r}
+peaks
+```
+
+
+```{r}
+sorted_peaks <- peaks[order(peaks$log10FE, decreasing = TRUE), ]
+region <- as.character(granges(peaks[812]))
+# specifies the genomic coordinates of the peak of interest in the format chromosome:start-end
+region # 3R:14391367-14391483
+# plot the signal around a specific peak of interest in the ChIP-seq data and visualize the read coverage across the region.
+plotSignalTracks(c(CTCF="aligned/CTCF.bam"), region=region)
+```
+
+
+```{r}
+
+region_spec <- "3R:28442014-28442089"
+region_spec
+plotSignalTracks(c(CTCF="aligned/CTCF.bam"), region=region_spec)
+```
+Signal is enriched comapred to it's background but also could be an artefact. 
