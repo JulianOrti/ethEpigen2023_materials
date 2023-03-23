@@ -1,0 +1,303 @@
+---
+title: "assignment week 4"
+output: html_document
+date: "2023-03-23"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Loading libraries
+
+```{r}
+suppressPackageStartupMessages({
+  library(AnnotationHub)
+  library(rtracklayer)
+  library(epiwraps)
+  library(GenomicRanges)
+})
+ah <- AnnotationHub()
+```
+
+Find and download from ENCODE the peaks (i.e. bed-like format) for the following histone modifications in mouse embryonic stem cells (mESC) from ENCODE:
+○ p300, H3K4me3, H3K4me1, H3K27ac, and H3K27me3
+○ (when there are replicates, we recommend using the bed file denoted as “conservative
+IDR thresholded peaks”)
+
+
+https://www.encodeproject.org/chip-seq-matrix/?type=Experiment&replicates.library.biosample.donor.organism.scientific_name=Mus%20musculus&assay_title=TF%20ChIP-seq&status=released
+
+The link I copied above is from the ENCODE project website, specifically to the ChIP-seq matrix page. This page contains a matrix of ChIP-seq experiments conducted by the ENCODE project
+
+On this page I searched for the organism Mus musculus (mouse) and for Transcriptionf Factors. 
+In the Matrix I looked out for P300 or in the table called EP300. Only one experiment used ES as cell line specifically ES-Bruce4
+
+TF ChIP-seq in ES-Bruce4
+Mus musculus strain Bruce4 ES-Bruce4
+Target: EP300 (Factorbook)
+Lab: Bing Ren, UCSD
+Project: ENCODE
+Reference Epigenome: ENCSR343RKY
+
+But not all the histone modifications were visible so I search in another way 
+
+To look after all the histone modifications I used the filter function H3K4me3, H3K4me1, H3K27ac, and H3K27me3
+
+To find and download the peaks for the given histone modifications in mESC from ENCODE:
+I searched for "mouse embryonic stem cells."
+
+
+Selected "Mus musculus (mouse)" from the "Organism" filter
+Selected "ES-Bruce4" from the "Biosample Type" filter
+Selected as Assay title "Histone ChIP-seq"
+
+
+And to look after the EP300 i just used the same filter system. 
+
+https://www.encodeproject.org/search/?type=Experiment&searchTerm=mouse+embryonic+stem+cells&assay_title=Histone+ChIP-seq&biosample_ontology.term_name=ES-Bruce4&assay_title=TF+ChIP-seq&target.label=EP300&target.label=H3K4me3&target.label=H3K4me1&target.label=H3K27ac&target.label=H3K27me3
+
+TF ChIP-seq in ES-Bruce4
+Mus musculus strain Bruce4 ES-Bruce4
+Target: EP300 (Factorbook)
+Lab: Bing Ren, UCSD
+Project: ENCODE
+Reference Epigenome: ENCSR343RKY
+
+Histone ChIP-seq in ES-Bruce4
+Mus musculus strain Bruce4 ES-Bruce4
+Target: H3K4me1
+Lab: Bing Ren, UCSD
+Project: ENCODE
+Reference Epigenome: ENCSR343RKY
+
+Histone ChIP-seq in ES-Bruce4
+Mus musculus strain Bruce4 ES-Bruce4
+Target: H3K27ac
+Lab: Bing Ren, UCSD
+Project: ENCODE
+Reference Epigenome: ENCSR343RKY
+candidate Cis-Regulatory Elements (cCREs): SCREEN
+
+Histone ChIP-seq in ES-Bruce4
+Mus musculus strain Bruce4 ES-Bruce4
+Target: H3K4me3
+Lab: Bing Ren, UCSD
+Project: ENCODE
+Reference Epigenome: ENCSR343RKY
+candidate Cis-Regulatory Elements (cCREs): SCREEN
+
+Histone ChIP-seq in ES-Bruce4
+Mus musculus strain Bruce4 ES-Bruce4
+Target: H3K27me3
+Lab: Bing Ren, UCSD
+Project: ENCODE
+Reference Epigenome: ENCSR343RKY
+
+# loading all the relevant files 
+## p300
+
+https://www.encodeproject.org/files/ENCFF653YVR/@@download/ENCFF653YVR.bed.gz
+
+```{r}
+getwd()
+```
+
+# Find and download from ENCODE the peaks (i.e. bed-like format) for the following histone modifications and transcription factors in mouse embryonic stem cells (mESC):
+ENCODE: https://www.encodeproject.org/search/?type=Experiment&control_type!=*&status=released 
+(when there are replicates, we recommend using the bed file denoted as “conservative IDR thresholded peaks”)
+
+## p300
+https://www.encodeproject.org/files/ENCFF610ZFC/
+Status released
+Dataset ENCSR000CCD
+File format bed narrowPeak
+Output type IDR thresholded peaks
+
+
+
+```{r}
+download.file("https://www.encodeproject.org/files/ENCFF610ZFC/@@download/ENCFF610ZFC.bed.gz", dest="p300.bed.gz")
+p300_peaks <- rtracklayer::import("p300.bed.gz", format="narrowPeak")
+```
+```{r}
+length(p300_peaks$peak)
+head(p300_peaks)
+p300_peaks
+
+```
+
+
+## H3K4me1
+Dataset ENCSR000CBF
+File format bed narrowPeak
+Output type replicated peaks
+
+https://www.encodeproject.org/files/ENCFF333IJH/
+
+
+```{r}
+download.file("https://www.encodeproject.org/files/ENCFF333IJH/@@download/ENCFF333IJH.bed.gz", dest="H3K4me1.bed.gz")
+H3K4me1_peaks <- rtracklayer::import("H3K4me1.bed.gz", format="narrowPeak")
+```
+
+
+## H3K4me3
+Dataset ENCSR000CBG
+File format bed narrowPeak
+Output type replicated peaks
+
+https://www.encodeproject.org/files/ENCFF247GVM/
+
+
+```{r}
+download.file("https://www.encodeproject.org/files/ENCFF247GVM/@@download/ENCFF247GVM.bed.gz", dest="H3K4me3.bed.gz")
+H3K4me3_peaks <- rtracklayer::import("H3K4me3.bed.gz", format="narrowPeak")
+```
+
+
+## H3K27me3
+Dataset ENCSR000CFN
+File format bed narrowPeak
+Output type replicated peaks
+
+https://www.encodeproject.org/files/ENCFF558YNC/
+
+
+
+```{r}
+download.file("https://www.encodeproject.org/files/ENCFF558YNC/@@download/ENCFF558YNC.bed.gz", dest="H3K27me3.bed.gz")
+H3K27me3_peaks <- rtracklayer::import("H3K27me3.bed.gz", format="narrowPeak")
+```
+
+
+## H3K27ac
+Dataset ENCSR000CDE
+File format bed narrowPeak
+Output type replicated peaks
+
+https://www.encodeproject.org/files/ENCFF360VIS/
+
+
+```{r}
+download.file("https://www.encodeproject.org/files/ENCFF360VIS/@@download/ENCFF360VIS.bed.gz", dest="H3K27ac.bed.gz")
+H3K27ac_peaks <- rtracklayer::import("H3K27ac.bed.gz", format="narrowPeak")
+```
+
+
+What files did I actually load?
+The files contain transcription factor binding sites and histone modification sites for mouse embryonic stem cells (mESC). 
+These sites have been identified in a ChIP-seq experiment using the transcriptional co-activator protein EP300 (also known as p300).
+
+
+
+## Of the p300 peaks, what proportion overlap each of the marks?
+
+
+```{r}
+p300OverlapsH3K4me1 <- overlapsAny(p300_peaks, H3K4me1_peaks)
+p300OverlapsH3K4me3 <- overlapsAny(p300_peaks, H3K4me3_peaks)
+p300OverlapsH3K27me3 <- overlapsAny(p300_peaks, H3K27me3_peaks)
+p300OverlapsH3K27ac <- overlapsAny(p300_peaks, H3K27ac_peaks)
+
+# Checking for any overlaps between p300 which is a transcriptional co-activator protein and H3K4me3, H3K4me1, H3K27ac, and H3K27me3 which are all modifications of the histone protein H3.
+
+# Generate four boolean variables (TRUE if there is overlap, FALSE if not).: "p300OverlapsH3K4me1", "p300OverlapsH3K4me3", "p300OverlapsH3K27me3", and "p300OverlapsH3K27ac", indicating whether there is any overlap between the p300 peaks and the peaks for each of the histone modifications.
+
+
+```
+
+
+
+```{r}
+table(p300OverlapsH3K4me1) # The code "table(p300OverlapsH3K4me1)" generatea a table summarizing the number of TRUE and FALSE values in the "p300OverlapsH3K4me1" variable.
+```
+```{r}
+table(p300OverlapsH3K4me3) # The code "table(p300OverlapsH3K4me3)" generatea a table summarizing the number of TRUE and FALSE values in the "table(p300OverlapsH3K4me3)" variable.
+```
+
+```{r}
+table(p300OverlapsH3K27me3) # The code "table(p300OverlapsH3K27me3)" generatea a table summarizing the number of TRUE and FALSE values in the "table(p300OverlapsH3K27me3)" variable.
+```
+
+```{r}
+table(p300OverlapsH3K27ac) # The code "table(p300OverlapsH3K27ac)" generatea a table summarizing the number of TRUE and FALSE values in the "table(p300OverlapsH3K27ac)" variable.
+```
+
+
+```{r}
+# calculate the number of p300 peaks that overlap with each mark
+p300OverlapH3K4me1 <- sum(overlapsAny(p300_peaks, H3K4me1_peaks))
+p300OverlapH3K4me3 <- sum(overlapsAny(p300_peaks, H3K4me3_peaks))
+p300OverlapH3K27ac <- sum(overlapsAny(p300_peaks, H3K27ac_peaks))
+p300OverlapH3K27me3 <- sum(overlapsAny(p300_peaks, H3K27me3_peaks))
+```
+
+
+```{r}
+# calculate the proportion of p300 peaks that overlap with each mark
+propOverlapH3K4me1 <- p300OverlapH3K4me1 / length(p300_peaks)
+propOverlapH3K4me3 <- p300OverlapH3K4me3 / length(p300_peaks)
+propOverlapH3K27ac <- p300OverlapH3K27ac / length(p300_peaks)
+propOverlapH3K27me3 <- p300OverlapH3K27me3 / length(p300_peaks)
+```
+
+
+
+```{r}
+# Print the results 
+cat("Proportion of p300 peaks overlapping H3K4me1: ", round(propOverlapH3K4me1*100,2), "%\n")
+cat("Proportion of p300 peaks overlapping H3K4me3: ", round(propOverlapH3K4me3*100,2), "%\n")
+cat("Proportion of p300 peaks overlapping H3K27ac: ", round(propOverlapH3K27ac*100,2), "%\n")
+cat("Proportion of p300 peaks overlapping H3K27me3: ", round(propOverlapH3K27me3*100,2), "%\n")
+```
+
+```{r}
+# Create a vector of the proportion of p300 peaks that overlap with each histone mark
+propOverlaps <- c(propOverlapH3K4me1, propOverlapH3K4me3, propOverlapH3K27ac, propOverlapH3K27me3)
+propOverlaps
+```
+
+```{r}
+# Create a bar plot of the proportions
+barplot(propOverlaps, names.arg=c("H3K4me1", "H3K4me3", "H3K27ac", "H3K27me3"), 
+        xlab="Histone Mark", ylab="Proportion Overlapping", ylim=c(0,1),
+        main="Prop. of p300 Peaks Overlapping Histone Modification Marks in mESC", cex.main=1)
+```
+
+First of all the number indidcate the degree of overlap between p300 and each of the four histone marks in mouse embryonic stem cells.
+
+But now let's look at the underlying biology of the EP300 (E1A Binding Protein P300) and the Histone Marks displayed above: 
+
+EP300 (E1A Binding Protein P300) is important in many cellular mechanisms which include gene regulation, proliferatio and differentation. 
+https://medlineplus.gov/genetics/gene/ep300/#:~:text=The%20EP300%20gene%20provides%20instructions,on%20specialized%20functions%20(differentiate).
+
+In addition P300 is a transcriptional coactivator that interacts with various transcription factors. This interactions lead to modifications of  chromatin structure and recruiting other transcriptional machinery.
+
+According to sources p300 turns on transcription by modulating the DNA. P300 has several domains, including a histone acetyltransferase (HAT) domain, which adds acetyl groups to lysine residues in histones and other proteins, leading to changes in chromatin structure and gene expression. This acetylation of histones induces the loosening of chromatin and makes DNA more accessible to transcriptional machinery, allowing for increased transcriptional activity.
+
+So now that we have an overview of the function of p300 let's analyze the overlap of peaks of the p300 data with the Histone Marks of interest: 
+
+
+Proportion of p300 peaks overlapping H3K4me1:  25.67 %
+Proportion of p300 peaks overlapping H3K4me3:  36.16 %
+Proportion of p300 peaks overlapping H3K27ac:  60.55 %
+Proportion of p300 peaks overlapping H3K27me3:  0.11 %
+
+Since we are looking at embryonic stem cells we have to keep in mind that transcription of gene is very active. This suggests that there is more euchromatin than heterochromatin which tells us that the genome is less condensed, gene-rich and more easily transcribable.
+
+
+The proportion of p300 peaks overlapping with H3K4me1 is 25.67%, while the proportion overlapping with H3K4me3 is 36.16%. This suggests that p300 may play a role in the regulation of genes marked with H3K4me1 and H3K4me3. DNA methylation depending on the context are seen as activating and deactivating marks but since the H3K4me1 and H3K4me3 marks overlap combined more than 60% with the peaks of p300 I suppose those are more activating marks than repressive marks. 
+
+The proportion of p300 peaks overlapping with H3K27ac is 60.55%, indicating a high degree of co-localization between p300 and H3K27ac. Since it is a acetylation: this is associated or shows tendencies to loosen the interaction between the histone and DNA, making the DNA more accessible to transcription factors and other regulatory proteins. H3K27ac is also associated with active transcription since it is a common found marker at enhancers regions suggesting that p300 may play a role in enhancer modification. But it is hard to tell if only this mark enhance transcriptional activity because during my research I've seen that this mark is dispensible which means that the genes get transcribe or stay active also when H3K27ac is taken away as a mark. 
+https://www.frontiersin.org/articles/10.3389/fgene.2020.00817/full
+https://genomebiology.biomedcentral.com/articles/10.1186/s13059-020-01957-w
+
+
+Finally, the proportion of p300 peaks overlapping with H3K27me3 is very low, at only 0.11%, suggesting that there is little co-localization between p300 and H3K27me3. H3K27me3 is a repressive histone mark associated with transcriptional silencing, so this result suggests that p300 may not be involved in the regulation of repressed genes marked with H3K27me3.
+https://www.ncbi.nlm.nih.gov/pmc/articles/PMC3515017/#:~:text=Trimethylation%20of%20histone%20H3%20at,H3K27me3%20remodeling%20during%20early%20development.
+
+
+
+
+
