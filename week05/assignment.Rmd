@@ -1,0 +1,472 @@
+---
+title: "assignment"
+output: html_document
+date: "2023-03-28"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+# Assignment
+
+1) Using the peaks you downloaded last week, identify bivalent domains (H3K27me3 + H3K4me3) in mouse embryonic stem cells (mESC)
+2) Question: what happens to those regions upon differentiation?
+
+- Choose one differentiated cell type (e.g. hepatocytes, neural progenitor, or smooth muscle cells)
+- Download the H3K27me3 and H3K4me3 peaks from this cell type
+- How many of the mESC bivalent domains are, in this differentiated cell type, overlapping either mark or their combination (in this differentiated cell type)?
+
+Don’t forget to upload your assignment as assignment.html !
+
+
+Just some extra tips for the assignment:
+- You will need to extract the regions that are bivalent in mESC. For this, you will have to subset your H3K4me3 peaks using overlapsAny  (and basic subsetting [] )
+- In order to then compare with the peaks in differentiated cell types, you can either use again overlapsAny or use an upset plot.
+- Whatever you do, write a sentence or two at the end interpreting the plot/results.
+
+
+```{r}
+suppressPackageStartupMessages({
+  library(AnnotationHub)
+  library(ensembldb)
+  library(GenomicRanges)
+  library(epiwraps)
+  library(rtracklayer)
+  library(ggplot2)
+})
+```
+
+# Summary of lecture and introduction the exercise 
+
+Before starting the exercise I would like to summarize last weeks presentation which was about the 
+1. Distribution of histone modifications across the genome: 
+- ,,Some histone modifications appear to be very localized, e.g. happening on a specific nucleosome, while most are much more broadly distributed''
+- Histone modifications are often spread — multiple nucleosomes have the same modifications -> spread signal, 
+- traditional strategies calling peaks is hard because the histone modifications are spread and widely distributed over neiboughring histones 
+- ,,The strategy of calling ‘peaks’ must therefore be adapted (e.g. “broad” option of most peak-callers)''
+
+2. ,,There is a very strong association of certain histone marks and activation or repression''
+- acetylation -> activity of the promoter or distal enhancer
+- trimethylation -> repressive mark 
+
+The Repressive and the Activating complexes are in competition with eachother 
+- Polycomb: extremly conserved -> catalyzes the me3 
+- While trithorax catalyzes the acetylation 
+H3K27ac and H3K4me are histone marks which are associated with an active transcription state while H3K27me is associated with a repressive mark 
+
+
+But which comes first?
+
+3. Causality or correlation?
+- ,,Are histone modifications responsible for activation/repression, or are they merely associated side-effects?''
+- Transcription-mediated histone modification
+- At the beginning of the gene -> TSS integrates methylations and with time the probability ot trimethylations get less 
+
+4. ,,The example of H3K27me3, chiefly deposited by the polycomb repressive complex (PRC2)''
+- ,,EHZ2’s SET domain catalyzes the addition of a 3rd methyl group to H3K27, i.e. H3K27me2 → H3K27me3''
+- ,,Abolishing the enzymatic activity of Ezh2, the gene responsible for depositing H3K27me3, abolishes (most of) the mark but does not prevent the repression of the target genes, nor cellular reprogramming'' -> Delete a small part of the complex so it is still functional but could not catalyze a specific reaction -> trimethylation 
+- ,,Similarly, the loss of H3K4me3 appears to have no effect on nascent transcription''
+
+So the question is: 
+H3K4me3 -> is it necessary?
+Functional?
+Context dependent?
+
+“acute loss of H3K4me3 does not have detectable effects on transcriptional initiation but leads to a widespread decrease in transcriptional output, an increase in RNA polymerase II (RNAPII) pausing and slower elongation. We show that H3K4me3 is required for the recruitment of the integrator complex subunit 11 (INTS11), which is essential for the eviction of paused RNAPII and transcriptional elongation.”
+
+So could it be that histone modifications actually serve a function? Do the histone marks serve as markers for downstream modifications of the genome?
+
+,,Causality or correlation? Most likely somewhere in the middle, depending on the modification/context''
+
+,,Whether they’re causative or not, they can serve as proxies for function.''
+,,This means that profiling a few histone modifications gives an overview of the epigenomic landscape of a cellular state which would otherwise require profiling all the potentially-relevant factors/complexes''
+
+ENCODE’s “signature strategy”:
+○ Different types of functional genetic elements are associated with different chemical signatures
+○ We can identify functional elements by identifying these signatures genome-wide
+
+
+Some stuff is pretty clear:
+● Transcription start site (TSS):
+  ○ H3K4me3 is almost always associated with active/poised TSS
+  ○ Active TSS are marked by H3K27ac
+  ○ So-called “poised” (or bivalent) TSS are instead marked by both H3K4me3 and H3K27me3
+● Enhancers:
+  ○ Most enhancers have H3K4me1
+  ○ Active enhancers are marked by H3K27ac
+  ○ So-called “poised” (or bivalent) enhancers are marked by H3K4me1 and H3K27me3
+● Repressed elements are marked by H3K27me3
+● Heterochromatin is marked by H3K9me3
+● Insulators: CTCF+cohesin
+
+
+
+# So know with this context let's start with the exercise 
+
+
+
+
+# 1) Using the peaks you downloaded last week, identify bivalent domains (H3K27me3 + H3K4me3) in mouse embryonic stem cells (mESC)
+
+
+
+
+```{r}
+getwd()
+```
+
+## Load the peaks from last week (mESC)
+
+Histone ChIP-seq in ES-Bruce4
+Mus musculus strain Bruce4 ES-Bruce4
+Target: H3K4me3
+Lab: Bing Ren, UCSD
+Project: ENCODE
+Reference Epigenome: ENCSR343RKY
+candidate Cis-Regulatory Elements (cCREs): SCREEN
+
+Histone ChIP-seq in ES-Bruce4
+Mus musculus strain Bruce4 ES-Bruce4
+Target: H3K27me3
+Lab: Bing Ren, UCSD
+Project: ENCODE
+Reference Epigenome: ENCSR343RKY
+
+
+
+## H3K4me3
+Dataset ENCSR000CBG
+File format bed narrowPeak
+Output type replicated peaks
+
+https://www.encodeproject.org/files/ENCFF247GVM/
+
+
+```{r}
+download.file("https://www.encodeproject.org/files/ENCFF247GVM/@@download/ENCFF247GVM.bed.gz", dest="H3K4me3.bed.gz")
+H3K4me3_peaks <- rtracklayer::import("H3K4me3.bed.gz", format="narrowPeak")
+```
+
+## H3K27me3
+Dataset ENCSR000CFN
+File format bed narrowPeak
+Output type replicated peaks
+
+https://www.encodeproject.org/files/ENCFF558YNC/
+
+
+
+```{r}
+download.file("https://www.encodeproject.org/files/ENCFF558YNC/@@download/ENCFF558YNC.bed.gz", dest="H3K27me3.bed.gz")
+H3K27me3_peaks <- rtracklayer::import("H3K27me3.bed.gz", format="narrowPeak")
+```
+# The Context
+
+So to give a context about this exercise let's just give a little contex what bivalent domains are and why there are relevant in mESC 
+
+Bivalent domains are regions in the genome that are marked by both repressive (H3K27me3) and activating (H3K4me3) chromatin modifications. 
+
+In particular, they are characterized by the co-occurrence of two histone modifications, namely H3K4me3 and H3K27me3.
+https://www.cell.com/trends/genetics/fulltext/S0168-9525(19)30244-6?rss=yes#:~:text=Bivalent%20domains%2C%20which%20are%20chromatin,that%20becomes%20redistributed%20during%20differentiation.
+
+H3K4me3 is a histone modification typically associated with actively transcribed genes, while H3K27me3 is a histone modification that is associated with gene silencing. 
+https://www.cell.com/trends/genetics/fulltext/S0168-9525(19)30244-6?rss=yes#:~:text=Bivalent%20domains%2C%20which%20are%20chromatin,that%20becomes%20redistributed%20during%20differentiation.
+
+Now the question is why there are bivalent domains in mESC?
+In embryonic stem cells, bivalent domains are thought to play a role in maintaining the pluripotent state of stem cells, a state in which the cell has the potential to differentiate into any cell type in the body. So bivalency is associated with the chromatin property -> so linked tightly to the pluripotent state of stem cells. 
+https://www.cell.com/trends/genetics/fulltext/S0168-9525(19)30244-6?rss=yes#:~:text=Bivalent%20domains%2C%20which%20are%20chromatin,that%20becomes%20redistributed%20during%20differentiation.
+
+Bivalent domains are thought to be poised for activation or repression, meaning that they are ready to be switched on or off depending on the cell state or fate that the cell needs to move to. Bivalent domains are also thought to be involved in regulating gene expression during development, as they are often found near genes that play a key role in differentiation.
+https://www.cell.com/trends/genetics/fulltext/S0168-9525(19)30244-6?rss=yes#:~:text=Bivalent%20domains%2C%20which%20are%20chromatin,that%20becomes%20redistributed%20during%20differentiation.
+
+,,Bivalency is a chromatin property that is tightly linked to the pluripotent state of stem cells in mammals. However, recent findings suggest that they in fact represent a universal mechanism for tissue-specific gene regulation.''
+https://www.cell.com/trends/genetics/fulltext/S0168-9525(19)30244-6?rss=yes#:~:text=Bivalent%20domains%2C%20which%20are%20chromatin,that%20becomes%20redistributed%20during%20differentiation.
+
+
+
+# Now Identify bivalent domains (H3K27me3 + H3K4me3) in mouse embryonic stem cells (mESC)
+## - You will need to extract the regions that are bivalent in mESC.  -> For this, you will have to subset your H3K4me3 peaks using overlapsAny (and basic subsetting [] )
+
+
+
+
+
+
+
+## Bivalent peaks 
+```{r}
+# This code is using the overlapsAny() function to identify bivalent peaks -> regions of DNA that are marked with both H3K4me3 and H3K27me3 in mouse embryonic stem cells (mESC).
+bivalentpeaks1 <- overlapsAny(H3K4me3_peaks, H3K27me3_peaks)  # The expression overlapsAny(H3K4me3_peaks,H3K27me3_peaks) checks if any of the ranges in H3K4me3_peaks overlap with any of the ranges in H3K27me3_peaks
+# bivalentpeaks1 # boolean -> TRUE AND FALSE 
+
+
+show(table(bivalentpeaks1)) # shows table of overlaps between the H3K4me3 and H3K27me3 peaks in sums 
+```
+### The output shows that there are 3594 peaks in H3K4me3_peaks that overlap with at least one peak in H3K27me3_peaks, while 48,905 peaks do not overlap with any peaks in H3K27me3_peaks.
+
+
+
+
+
+## Bivalent peaks 
+```{r}
+# This code is using the overlapsAny() function to identify bivalent peaks -> regions of DNA that are marked with both H3K4me3 and H3K27me3 in mouse embryonic stem cells (mESC).
+bivalentpeaks2 <- overlapsAny(H3K27me3_peaks, H3K4me3_peaks)
+# The expression overlapsAny(H3K27me3_peaks,H3K4me3_peaks) checks if any of the ranges in H3K27me3_peaks overlap with any of the ranges in H3K4me3_peaks
+
+
+show(table(bivalentpeaks2))# shows table of overlaps between the H3K27me3and H3K4me3 peaks in sums 
+```
+
+
+### In this case, there are 4705 bivalent peaks and 11943 non-bivalent peaks.
+
+### The two expressions return different results, depending on the specific ranges included in H3K4me3_peaks and H3K27me3_peaks. This is because overlap is not a symmetric relation: just because a range in H3K4me3_peaks overlaps with a range in H3K27me3_peaks., it does not necessarily mean that the same range in H3K27me3_peaks. overlaps with the same range in H3K4me3_peaks.
+
+
+
+bivalentpeaks1
+FALSE  TRUE 
+48905  3594 
+
+bivalentpeaks2
+FALSE  TRUE 
+11943  4705 
+
+
+# You will need to extract the regions that are bivalent in mESC. For this, you will have to subset your H3K4me3 peaks using overlapsAny  (and basic subsetting [] )
+
+## Using the boolean values we can get the GRanges from the peaks variables
+
+
+# Subset H3K4me3 bivalency regions 
+```{r}
+
+# subset bivalentpeaks1 which is indicating whether each H3K4me3 peak overlaps with any H3K27me3 peaks.
+bivalent_subset1_H3K4me3 <- H3K4me3_peaks[bivalentpeaks1] 
+
+
+#################################################################################################################################################################
+
+# show the first few rows of each object (in this case GRange object), and the length() function is used to show the number of bivalent regions.
+head(bivalent_subset1_H3K4me3) 
+length(bivalent_subset1_H3K4me3)
+```
+
+
+
+
+# Subset H3K27me3 bivalency regions 
+```{r}
+
+# subset bivalentpeaks2 which indicating whether each H3K27me3 peak overlaps with any H3K4me3 peak
+bivalent_subset2_H3K27me3 <- H3K27me3_peaks[bivalentpeaks2]
+
+#################################################################################################################################################################
+
+# show the first few rows of each object (in this case GRange object), and the length() function is used to show the number of bivalent regions.
+head(bivalent_subset2_H3K27me3)
+length(bivalent_subset2_H3K27me3)
+```
+
+## The code lines above extract the genomic regions that are bivalent in mESC by subsetting the H3K27me3_peaks and H3K4me3_peaks objects using the logical vectors (contain boolean TRUE and FALSE) bivalentpeaks2 and bivalentpeaks1, respectively. These subsets are saved as bivalent_subset1 and bivalent_subset2 -> Only contain the regions which show bivalency for  H3K27me3_peaks and H3K4me3_peaks
+
+
+
+
+# 2) Question: what happens to those regions upon differentiation?
+
+## - Choose one differentiated cell type (e.g. hepatocytes, neural progenitor, or smooth muscle cells)
+## - Download the H3K27me3 and H3K4me3 peaks from this cell type
+## - How many of the mESC bivalent domains are, in this differentiated cell type, overlapping either mark or their combination (in this differentiated cell type)?
+
+
+
+## Choose one differentiated cell type (e.g. hepatocytes, neural progenitor, or smooth muscle cells) 
+https://www.encodeproject.org/search/?type=Experiment&assay_title=Histone+ChIP-seq&target.label=H3K4me3&target.label=H3K27me3&replicates.library.biosample.donor.organism.scientific_name=Mus+musculus&biosample_ontology.classification=in+vitro+differentiated+cells&biosample_ontology.classification=tissue&lab.title=Bing+Ren%2C+UCSD&biosample_ontology.organ_slims=heart&replicates.library.biosample.life_stage=adult
+
+
+### The link with the selection criteria gave me the following results -> I've decided to choose the Histone ChIP-seq in heart from the Mus musculus strain B6NCrl heart tissue male adult (2 months). The targets -> Target: H3K27me3 / Target: H3K4me3
+
+
+
+
+## - Download the H3K27me3 and H3K4me3 peaks from this cell type
+
+
+Histone ChIP-seq in heart
+Mus musculus strain B6NCrl heart tissue male adult (2 months)
+Target: H3K27me3
+Lab: Bing Ren, UCSD
+Project: ENCODE
+Organism Development Series: ENCSR037KJM
+Reference Epigenome: ENCSR656TAD
+
+https://www.encodeproject.org/files/ENCFF887SZF/
+
+
+
+```{r}
+download.file("https://www.encodeproject.org/files/ENCFF887SZF/@@download/ENCFF887SZF.bed.gz", dest="H3K27me3_myocytesdiff.bed.gz")
+diffmycocytes_H3K27me3_peaks <- rtracklayer::import("H3K27me3_myocytesdiff.bed.gz", format="narrowPeak")
+```
+
+
+Histone ChIP-seq in heart
+Mus musculus strain B6NCrl heart tissue male adult (2 months)
+Target: H3K4me3
+Lab: Bing Ren, UCSD
+Project: ENCODE
+Organism Development Series: ENCSR160PVC
+Reference Epigenome: ENCSR656TAD
+
+https://www.encodeproject.org/files/ENCFF599BFW/
+
+
+```{r}
+download.file("https://www.encodeproject.org/files/ENCFF599BFW/@@download/ENCFF599BFW.bed.gz", dest="H3K4me3_myocytesdiff.bed.gz")
+diffmyocytes_H3K4me3_peaks <- rtracklayer::import("H3K4me3_myocytesdiff.bed.gz", format="narrowPeak")
+```
+
+
+
+```{r}
+diffmycocytes_H3K27me3_peaks # GRanges object 
+```
+
+```{r}
+diffmyocytes_H3K4me3_peaks # GRanges object 
+```
+
+
+## - How many of the mESC bivalent domains are, in this differentiated cell type, overlapping either mark or their combination (in this differentiated cell type)?
+
+Now lets find the bivalent site in the adult heart tissue. Again this is not symetric so lets do this both ways
+```{r}
+
+# This code is using the overlapsAny() function to identify bivalent peaks -> regions of DNA that are marked with both H3K4me3 and H3K27me3 in differentiated myocytes -> returns boolean
+
+# The expression overlapsAny(diffmyocytes_H3K4me3_peaks, diffmycocytes_H3K27me3_peaks) checks if any of the ranges in diffmyocytes_H3K4me3_peaks overlap with any of the ranges in diffmycocytes_H3K27me3_peaks
+
+diffmyocytes_H3K4me3_on_H3K27me3 <- overlapsAny(diffmyocytes_H3K4me3_peaks, diffmycocytes_H3K27me3_peaks)
+
+
+#################################################################################################################################################################
+
+
+show(table(diffmyocytes_H3K4me3_on_H3K27me3)) # shows table of divalent regions (TRUE and FALSE) between the peaks  H3K4me3 and H3K27me3 in differentiated myocytes
+```
+### In this case, there are 2122  bivalent peaks and 31296 non-bivalent peaks.
+
+
+
+```{r}
+
+# This code is using the overlapsAny() function to identify bivalent peaks -> regions of DNA that are marked with both H3K4me3 and H3K27me3 in differentiated myocytes -> returns boolean
+
+# The expressionoverlapsAny(diffmycocytes_H3K27me3_peaks, diffmyocytes_H3K4me3_peaks) checks if any of the ranges in diffmycocytes_H3K27me3_peaks overlap with any of the ranges in diffmyocytes_H3K4me3_peaks
+
+
+diffmyocytes_H3K27me3_on_H3K4me3 <- overlapsAny(diffmycocytes_H3K27me3_peaks, diffmyocytes_H3K4me3_peaks)
+
+#################################################################################################################################################################
+
+show(table(diffmyocytes_H3K27me3_on_H3K4me3)) # shows table of divalent regions (TRUE and FALSE) between the peaks  H3K4me3 and H3K27me3 in differentiated myocytes
+
+#################################################################################################################################################################
+
+```
+### In this case, there are 2677 bivalent peaks and 12373 non-bivalent peaks.
+
+
+
+
+```{r}
+# subset diffmyocytes_H3K27me3_on_H3K4me3 which is indicating whether each H3K27me3 peak overlaps with any H3K4me3 peaks.
+subset_bivalency_H3K27me3_diffmycocytes <- diffmycocytes_H3K27me3_peaks[diffmyocytes_H3K27me3_on_H3K4me3]
+
+
+#################################################################################################################################################################
+
+# show the first few rows of each object (in this case GRange object), and the length() function is used to show the number of bivalent regions.
+head(subset_bivalency_H3K27me3_diffmycocytes) 
+length(subset_bivalency_H3K27me3_diffmycocytes)
+```
+
+
+
+
+
+
+
+```{r}
+# subset diffmyocytes_H3K4me3_on_H3K27me3 which is indicating whether each H3K4me3 peak overlaps with any H3K27me3 peaks.
+subset_bivalency_H3K4me3_diffmycocytes <- diffmyocytes_H3K4me3_peaks[diffmyocytes_H3K4me3_on_H3K27me3]
+
+
+#################################################################################################################################################################
+
+# show the first few rows of each object (in this case GRange object), and the length() function is used to show the number of bivalent regions.
+head(subset_bivalency_H3K4me3_diffmycocytes) 
+length(subset_bivalency_H3K4me3_diffmycocytes)
+```
+
+
+
+## - Still -> How many of the mESC bivalent domains are, in this differentiated cell type, overlapping either mark or their combination (in this differentiated cell type)?
+
+
+### To answer this question, we need to count the number of mESC bivalent domains that overlap with either H3K4me3 or H3K27me3 or both in the differentiated myocytes.
+
+### We can do this by using the overlapsAny() function to check if any of the ranges in the mESC bivalent domains overlap with any of the ranges in the differentiated myocytes H3K4me3 and H3K27me3 peaks.
+
+```{r}
+
+bivalentmESC_overlapping_bivalentdiffmyocytes <- overlapsAny(bivalent_subset1_H3K4me3, subset_bivalency_H3K4me3_diffmycocytes)
+# how does bivalency change from mESC to differentiated cells -> probably fate dependent
+table(bivalentmESC_overlapping_bivalentdiffmyocytes)
+```
+
+```{r}
+1081 / (2531+1081)* 100
+```
+
+The result indicates that from all the bivalent peaks identified in the mESC, about 29.93% of them are also bivalent in differentiated myocytes.This suggests that some regions of DNA that are marked with both H3K4me3 and H3K27me3 in mESCs maintain this bivalency in differentiated myocytes. However, a significant portion of bivalent peaks in mESCs do not retain bivalency in differentiated myocytes, indicating that the bivalent state is not static and changes depending on the cellular context (reflecting changes in gene expression and cell fate in this case mESC change from pluripotent cells to myocytes).
+
+
+
+
+```{r}
+# mESC bivalent domains overlapping either H3K4me3 or H3K27me
+bivalent_mESC_overlapping_H3K4me3 <- overlapsAny(bivalent_subset1_H3K4me3, diffmyocytes_H3K4me3_peaks)
+table(bivalent_mESC_overlapping_H3K4me3)
+```
+
+
+
+
+```{r}
+2173 / (1421 + 2173) * 100
+```
+
+```{r}
+# mESC bivalent domains overlapping either H3K4me3 or H3K27me
+bivalent_mESC_overlapping_H3K27me3_peaks <- overlapsAny(bivalent_subset1_H3K4me3, diffmycocytes_H3K27me3_peaks)
+table(bivalent_mESC_overlapping_H3K27me3_peaks)
+```
+
+```{r}
+2198 / (1396 + 2198) * 100
+```
+
+
+If we calculate the percentage of bivalent mESC domains that overlap with either H3K4me3 or H3K27me3 in differentiated myocytes, we get:
+
+H3K4me3:  60.5%
+H3K27me3: 61.1%
+
+
+So this leaves room for interpretation because there is a slightly higher percentage of bivalent domains overlapping with H3K27me3 in differentiated myocytes compared to H3K4me3. This could suggest that the differentiation process leads to a shift towards more repressive epigenetic marks. But the difference is quite small so there would be need of further analysis if there are many genes expressed differently in mESC and cardiomyocytes. 
+
