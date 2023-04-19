@@ -1,0 +1,264 @@
+---
+title: "assignment"
+output: html_document
+date: "2023-03-31"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+- AnnotationHub, which provides access to genomic annotations from various sources
+- GenomicRanges, which provides data structures and tools for working with genomic ranges
+ ggplot2, which is a popular package for creating graphics and data visualizations
+memes, which is a package for motif discovery and analysis (note the comment to "COMMENT OUT when using alternatives")
+- motifmatchr, which is a package for scanning sequences for motif occurrences
+- Biostrings, which is a package for working with biological sequences
+- MotifDb, which provides a database of motifs from various sources
+- TFBSTools, which is a package for handling transcription factor binding site motifs
+- universalmotif, which is a package for converting motifs to various formats
+- PWMEnrich, which is a package for performing R-based motif enrichment analysis.
+
+```{r packages}
+suppressPackageStartupMessages({
+  library(AnnotationHub)
+  library(GenomicRanges)
+  library(ggplot2)
+  library(memes) # for the meme-based methods -- COMMENT OUT when using alternatives
+  library(motifmatchr)
+  library(Biostrings) # for handling sequences
+  library(MotifDb) # database of motifs
+  library(TFBSTools) # for handling some motif formats
+  library(universalmotif) # for converting motifs to various formats
+  library(PWMEnrich) # for R-based motif enrichment analysis
+})
+```
+
+
+# Choose a transcription factor, e.g. CREB1, REST, GATA5, EGR1, GCR (or any of your choice that has a motif and available ChIPseq data)
+
+## Download the (e.g. Mouse) peaks for that factor (in whatever cell type)
+
+## Identify the instances of the factor's motif
+
+## Answer the following questions:
+### Of all the peaks, what proportion contains a motif for the factor?
+#### Expected form of an answer: of the XX peaks, XX (XX%) contain a motif
+### Of all instances of that motif in the genome (or in one chromosome), what proportion is bound by the factor (i.e. has a peak)?
+#### Expected form of an answer: of the XX motif instances, XX (XX%) overlap a peak
+
+
+#### Don’t forget to render your markdown and push it as assignment.html !
+
+```{r}
+getwd()
+```
+
+Filtering files: 
+https://www.encodeproject.org/search/?replicates.library.biosample.donor.organism.scientific_name=Mus+musculus&assay_title=TF+ChIP-seq&type=Experiment&target.label=REST
+
+
+
+TF ChIP-seq in myocyte
+Mus musculus myocyte originated from C2C12
+Target: REST (Factorbook)
+Lab: Barbara Wold, Caltech
+Project: ENCODE
+https://www.encodeproject.org/files/ENCFF368VWJ/
+
+
+download.file() is a function that downloads a file from the internet to the local file system. The first argument is the URL of the file to download, and the second argument specifies the filename and destination of the downloaded file. In this case, the file is downloaded from the ENCODE project website and saved as a compressed file in the current working directory.
+
+- rtracklayer::import() is used to import the downloaded file into R as a GenomicRanges object, which is a data structure that represents genomic regions such as the peaks from the ChIP-seq experiment. The format argument specifies the format of the input file, which in this case is a "narrowPeak" format file.
+
+- seqlevelsStyle() is used to change the style of the chromosome names in the GenomicRanges object from "chr" style to "Ensembl" style. This is necessary because different sources of genomic data can use different naming conventions for chromosomes.
+
+- Finally, peaks_REST_chr1 is created as a subset of the peaks data containing only the peaks found on chromosome 1, which is specified using the seqnames() function. The result is a GenomicRanges object that contains only the peaks found on chromosome 1 for the transcription factor of interest.
+
+
+```{r REST}
+download.file("https://www.encodeproject.org/files/ENCFF368VWJ/@@download/ENCFF368VWJ.bed.gz", dest="REST_TF_ChIPseq.bed.gz")
+peaks <- rtracklayer::import("REST_TF_ChIPseq.bed.gz", format="narrowPeak")
+seqlevelsStyle(peaks) <- "Ensembl"  # to change the convention of the chromosome names to ensembl (i.e. without 'chr')
+peaks_REST_chr1 <- peaks[seqnames(peaks)=="1"] # peaks found on chromsome 1 
+```
+
+
+```{r}
+ah <- AnnotationHub()
+# display(ah)
+```
+
+
+
+
+
+```{r}
+peak_centers <- resize(peaks_REST_chr1, fix="center", width=100)
+peak_centers
+# resize the peaks to a fixed width of 100 bp centered on the peak summit
+# the resulting 'peak_centers' object contains the centers of the peaks
+
+ah <- AnnotationHub(localHub=FALSE)
+genome <- ah[["AH68356"]]
+# create an AnnotationHub object and get the genome annotation for the organism of interest
+# 'AH68356' is the identifier for the genome annotation used in this analysis
+
+peak_seqs <- memes::get_sequence(peak_centers, genome)
+# use the 'memes' package to get the DNA sequences corresponding to the peak centers
+# the resulting 'peak_seqs' object contains the DNA sequences
+
+peak_seqs
+as.character(peak_seqs[1])
+# display the sequences in the 'peak_seqs' object and display the first sequence as a character string
+```
+
+```{r}
+# we search for "REST" in the motif database
+# this line searches for motifs related to the transcription factor of interest in a motif database
+# the second argument to the 'query' function is the name of the transcription factor
+# in this case, the transcription factor is 'REST'
+
+motifs <- query(MotifDb, "REST")
+# assign the results of the motif search to the variable 'motifs'
+
+motifs
+# display the 'motifs' variable to see the motifs that were found
+```
+
+
+
+```{r}
+REST_motif <- motifs[["Mmusculus-HOCOMOCOv10-REST_MOUSE.H10MO.A"]]
+# assign a specific motif to the 'REST_motif' variable
+# this is done by specifying the name of the motif in the 'motifs' variable
+# here, the name of the motif is "Mmusculus-HOCOMOCOv10-REST_MOUSE.H10MO.A"
+
+view_motifs(REST_motif)
+# visualize the motif using the 'view_motifs' function
+# this function is part of the 'motifmatchr' package and is used to display the motif as a sequence logo
+```
+
+```{r, eval=FALSE}
+# if you don't already have the genome in fasta format saved somewhere, convert it to that format:
+Biostrings::writeXStringSet(rtracklayer::import(genome), "genome.fa")
+# we also need to convert the motif to a format that this package will accept
+motif2 <- convert_motifs(motif, class="TFBSTools-PFMatrix")
+# if we had a list of motifs instead, we'd convert them like this:
+# motifs2 <- setNames(do.call(PFMatrixList, convert_motifs(motifs, class="TFBSTools-PFMatrix")), names(motifs))
+moi2 <- motifmatchr::matchMotifs(motif2, subject=peak_centers, genome=Rsamtools::FaFile("genome.fa"), out="positions")[[1]]
+head(moi2)
+# this line uses the 'matchMotifs' function from the 'motifmatchr' package to identify motif matches in the peak centers
+# the 'subject' argument specifies the peak centers to search for the motif
+# the 'genome' argument specifies the genome file in fasta format that was created earlier
+# the 'out' argument specifies that the output should be in "positions" format
+# the resulting matches are stored in the 'moi2' variable
+```
+
+
+### Another R alternative...
+
+For those users who can't install memes & where `motifmatchr::matchMotifs` somehow doesn't work...
+
+```{r}
+#' findMotifInstances
+#'
+#' A wrapper around TFBSTools for scanning motif occurence, handling the 
+#' coordinate conversion as `memes` does.
+#' 
+#' @param seqs A set of sequences, e.g. `DNAStringSet`, optionally with 
+#'   coordinate as names to enable conversion. (e.g. use 
+#'   `names(seqs) <- as.character(granges(peaks))` to set them)
+#' @param motif A motif, in any format recognized by `universalmotif`
+#' @param keepMatchedSeq Logical; whether to keep the matched sequence.
+#' @param ... Passed to `TFBSTools::searchSeq`; can for instance be used to set
+#'   the number of threads to use, e.g. with `mc.cores=2`
+#'
+#' @return A `GRanges` object
+findMotifInstances <- function(seqs, motif, keepMatchedSeq=FALSE, ...){
+  motif <- universalmotif::convert_motifs(motif, "TFBSTools-PWMatrix")
+  x <- suppressWarnings(TFBSTools::searchSeq(motif, subject=seqs))
+  peaks <- strsplit(gsub("-",":",names(seqs)), ":")
+  if(!is.null(names(seqs)) && all(lengths(peaks)==3)){ # convert relative coordinates to absolute
+    chrs <- sapply(peaks,FUN=function(x) x[1])
+    offsets <- sapply(peaks,FUN=function(x) as.integer(x[2]))-1L
+    i <- rep(seq_along(x),lengths(x))
+    return(GRanges(chrs[i], 
+                   IRanges(offsets[i]+as.integer(unlist(lapply(x, start))),
+                           offsets[i]+as.integer(unlist(lapply(x, end)))),
+                   strand=unlist(lapply(x, strand)),
+                   score=as.numeric(unlist(lapply(x, FUN=function(x) score(x))))
+                   ))
+  }
+  x <- as(x, "GRanges")
+  score(x) <- x$absScore
+  keepFields <- c("score","relScore")
+  if(keepMatchedSeq) keepFields <- c(keepFields, "siteSeqs")
+  mcols(x) <- mcols(x)[,intersect(colnames(mcols(x)), keepFields)]
+  x
+}
+```
+
+
+```{r}
+moi <- findMotifInstances(peak_seqs, REST_motif)
+```
+
+
+## Comparison of the results
+### super low matches possibly the reason is we are looking only at one chromosome 
+
+```{r, eval=FALSE}
+epiwraps::regionUpset(list(fimo=moi, motifmatchr=moi2))
+# creates an UpSet plot to compare the results of two different motif scanning methods, moi and moi2, which are passed as a list to the function. The plot shows the number of overlapping and unique regions found by each method, and how many regions were found by both methods.
+
+boxplot(moi$score~overlapsAny(moi, moi2))
+# boxplot() function creates a box plot of the scores of the regions found by moi, grouped by whether or not they overlap with regions found by moi2. The overlapsAny() function is used to determine if each region in moi overlaps with any regions in moi2.
+
+```
+
+
+
+### This code is identifying the number and proportion of peaks in peaks_REST_chr1 that contain at least one instance of the motif sequence.
+
+```{r}
+# peaks with motif:
+peaks_w_motif <- peaks_REST_chr1[overlapsAny(peaks_REST_chr1,moi)]
+length(peaks_w_motif)
+length(peaks_REST_chr1)
+length(peaks_w_motif)/length(peaks_REST_chr1)
+```
+
+
+# Of all the peaks, what proportion contains a motif for the factor?
+
+```{r}
+# peaks with motif:
+peaks_w_motif <- peaks_REST_chr1[overlapsAny(peaks_REST_chr1,moi)]
+
+# calculate the proportion of peaks with the motif
+prop_peaks_w_motif <- sprintf("%.2f%%", length(peaks_w_motif) / length(peaks_REST_chr1) * 100)
+
+# print the answer
+cat(paste0("Of all the peaks, ", length(peaks_w_motif), " (", prop_peaks_w_motif, ") contain a motif."))
+```
+
+
+
+
+# Of all instances of that motif in the genome (or in one chromosome), what proportion is bound by the factor (i.e. has a peak)?
+
+```{r}
+# calculate the total number of motif instances in the chromosome
+total_motif_instances <- length(moi)
+
+# calculate the number of motif instances that overlap a peak
+motif_instances_with_peak <- length(unique(moi[overlapsAny(moi, peaks_REST_chr1)]))
+
+# calculate the proportion of motif instances with a peak
+prop_motif_instances_with_peak <- motif_instances_with_peak / total_motif_instances
+
+# print the results
+cat("Of all the", total_motif_instances, "motif instances in the chromosome,", motif_instances_with_peak, "(", round(prop_motif_instances_with_peak*100, 2), "%)", "overlap a peak.")
+```
+
