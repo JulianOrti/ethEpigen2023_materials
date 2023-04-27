@@ -1,0 +1,182 @@
+---
+title: "assignment"
+output: html_document
+date: "2023-04-26"
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+getwd()
+```
+
+
+# Assignment
+
+## In the same dataset of ATAC on chr19, plot the insertion (i.e. ‘cuts’) profile of, respectively, nucleosome-free and nucleosome-containing fragments, around the high-confidence motifs of two factors. You can choose your own factors of interest, or for instance use KLF4 and MAZ.
+
+## Expected form of the answer: 2 figures (one for each factor), each containing the two signals around the motifs
+
+
+```{r}
+suppressPackageStartupMessages({
+  library(epiwraps)
+  library(AnnotationHub)
+  library(MotifDb)
+  library(memes)
+  library(universalmotif)
+  library(ensembldb)
+  library(ggplot2)
+})
+ah <- AnnotationHub(localHub=FALSE)
+ensdb <- ah[["AH89211"]] # mouse ensembldb object
+```
+
+
+## Download the data
+
+```{r, eval=FALSE}
+download.file("https://ethz-ins.org/content/w7/atac.chr19.bam", "atac.chr19.bam")
+download.file("https://ethz-ins.org/content/w7/atac.chr19.bam.bai", "atac.chr19.bam.bai")
+```
+
+
+
+```{r, eval=FALSE}
+# if you're on a slow computer, you might also want to download the tracks that we're generating below:
+download.file("https://ethz-ins.org/content/w7/w7_bw.zip", "w7_bw.zip")
+unzip("w7_bw.zip")
+```
+
+```{r}
+bam <- "atac.chr19.bam"
+# create a track using all fragments, computing the coverage at each position (and force Ensembl naming)
+bam2bw(bam, output_bw = "full_cov.bw", paired=TRUE, binWidth=10L, forceSeqlevelsStyle = "Ensembl")
+# create a track using all fragments, but computing the number of cuts/insertion sites at each position
+epiwraps::bam2bw(bam, output_bw = "full_cuts.bw", paired=TRUE, binWidth=1L, type="ends", 
+                 shift=c(4L,-5L), forceSeqlevelsStyle = "Ensembl")
+# create a track using only nucleosome-free fragments, computing coverage
+bam2bw(bam, output_bw = "NF_cov.bw", paired=TRUE, binWidth=5L, minFragLength=30, 
+       maxFragLength=120, forceSeqlevelsStyle = "Ensembl")
+# create a track using only nucleosome-free fragments, the number of cuts/insertion sites at each position
+bam2bw(bam, output_bw = "NF_cuts.bw", paired=TRUE, binWidth=1L, type="ends", minFragLength=30, 
+       maxFragLength=120, shift=c(4L,-5L), forceSeqlevelsStyle = "Ensembl")
+# create a track using only mono-nucleosome fragments, computing coverage
+bam2bw(bam, output_bw = "mono_cov.bw", paired=TRUE, binWidth=10L, minFragLength=140,
+       maxFragLength=220, forceSeqlevelsStyle = "Ensembl")
+# create a track using only mono-nucleosome fragments, computing centers
+bam2bw(bam, output_bw = "mono_centers.bw", paired=TRUE, binWidth=5L, minFragLength=140,
+       maxFragLength=220, type="center", forceSeqlevelsStyle = "Ensembl")
+```
+#### We already discussed in the lecture that the proportion of binding sites that show motif are TF dependent and normally the porportion of instances that are bound by a certain factor are very small. 
+
+#### With that in mind there must be a factor that influences the bind of factors to their motifs. It must be the dynamic changes of the chromatin structure that influence DNA accessibility. Lower nucleosom density is associated with a higher DNA accessiblity and is reflected in the activity.
+#### In the lecture the accessiblity of the DNA was also described as a continuum which means that the distribution of chromatin changes dynamically across the entire genome. 
+
+#### ATAC-seq is an accessibility essay and is becoming more and more popular due to it's information content and low material requirment. It is super powerful since it cleaves atopen regions where TF's can be bound and also in closed regions where there is a higher density of nucleosomes. The signal output is the size of fragments -> Nucelosme-free fragments, Di-nucleosome fragments and Mono-nucelosome fragments. So once the data is generated which are the signal track we can display it in heatmap and the channels can be splitt into Nucelosome free signals where there is a higher chance of TF binding and signals that contain one or more Nucleosomes. 
+
+#### Here we investigate KLF4 and MAZ motifs and in which scope they are accessible. 
+```{r}
+
+# get KLF4 motif
+klf4_motif <- query(MotifDb, c("KLF4","Mus"))[[1]]
+klf4_motif2 <- convert_motifs(klf4_motif, class="TFBSTools-PFMatrix")
+
+# get MAZ motif
+maz_motif <- query(MotifDb, c("MAZ","Mus"))[[1]]
+maz_motif2 <- convert_motifs(maz_motif, class="TFBSTools-PFMatrix")
+
+# get the sequence for chr19:
+genome <- ah[["AH68356"]]
+chr19 <- import(genome)["19"]
+
+# find motif occurences
+moi_klf4 <- motifmatchr::matchMotifs(klf4_motif2, chr19, out="positions", p.cutoff=1e-5)[[1]]
+moi_maz <- motifmatchr::matchMotifs(maz_motif2, chr19, out="positions", p.cutoff=1e-5)[[1]]
+
+# convert to GRanges (when using motifmatchr)
+moi_klf4 <- as(setNames(moi_klf4,names(chr19)), "GRanges")                                    
+moi_maz <- as(setNames(moi_maz,names(chr19)), "GRanges")
+```
+
+
+## Plotting signal around the motif occurences for KLF4
+
+```{r}
+# we prepare the list of tracks
+tracks <- c("Full coverage"="full_cov.bw", "NF coverage"="NF_cov.bw", "All cuts"="full_cuts.bw",
+            "NF cuts"="NF_cuts.bw", "Mono cov"="mono_cov.bw", "Mono centers"="mono_centers.bw")
+# extract signals around the KLF4 motif occurrences
+klf4_sm <- signal2Matrix(tracks, moi_klf4, w=5, extend=500)
+# plot the signals:
+#plotEnrichedHeatmaps(klf4_sm, trim = 0.95)
+# we renormalize using border backgrounds
+klf4_smb <- renormalizeBorders(klf4_sm)
+#plotEnrichedHeatmaps(klf4_smb, trim=0.95, colors = c("white","darkred"), minRowVal = 20)
+# the right to do this, however, is using a background normalization
+# this we can do for instance using:
+klf4_nf <- bwNormFactors(tracks, useSeqLevels="19", nwind=5000L)
+# then we apply the normalization factors:
+klf4_smb <- rescaleSignalMatrices(klf4_sm, klf4_nf)
+#plotEnrichedHeatmaps(klf4_smb, trim=0.95, minRowVal = 15, colors = c("white","darkred"))
+```
+## Plotting signal around the motif occurences for MAZ
+
+```{r}
+# we prepare the list of tracks
+tracks <- c("Full coverage"="full_cov.bw", "NF coverage"="NF_cov.bw", "All cuts"="full_cuts.bw",
+            "NF cuts"="NF_cuts.bw", "Mono cov"="mono_cov.bw", "Mono centers"="mono_centers.bw")
+# extract signals around the MAZ motif occurrences
+maz_sm <- signal2Matrix(tracks, moi_maz, w=5, extend=500)
+# plot the signals:
+# plotEnrichedHeatmaps(maz_sm, trim=0.95)
+# we renormalize using border backgrounds
+maz_smb <- renormalizeBorders(maz_sm)
+# plotEnrichedHeatmaps(maz_smb, trim=0.95, colors = c("white","darkred"), minRowVal = 20)
+# the right to do this, however, is using a background normalization
+# this we can do for instance using:
+maz_nf <- bwNormFactors(tracks, useSeqLevels="19", nwind=5000L)
+# then we apply the normalization factors:
+maz_smb <- rescaleSignalMatrices(maz_sm, maz_nf)
+# plotEnrichedHeatmaps(maz_smb, trim=0.95, minRowVal = 15, colors = c("white","darkred"))
+```
+
+#### I was not able to plot the analysis of the motifs so I commented them out 
+Reading full_cov.bw
+Reading NF_cov.bw
+Reading full_cuts.bw
+Reading NF_cuts.bw
+Reading mono_cov.bw
+Reading mono_centers.bw
+> # plot the signals:
+> # plotEnrichedHeatmaps(klf4_sm, trim = 0.95)
+> # we renormalize using border backgrounds
+> klf4_smb <- renormalizeBorders(klf4_sm)
+> plotEnrichedHeatmaps(klf4_smb, trim=0.95, colors = c("white","darkred"), minRowVal = 20)
+Error: rsession-arm64: UnableToOpenBlob `/var/folders/87/g5l77ywx3wx22v350402r3hm0000gn/T//RtmpwAm1xz/.heatmap_body_4d77f8de30213d21e80a1c6a27d18f87_1_170ee49959c7c.png': No such file or directory @ error/blob.c/OpenBlob/2924
+> 
+
+## Plotting footprint
+
+### Footprint of MAZ (Myc-associated zinc finger protein) is a zinc finger transcription factor
+
+ 
+```{r}
+m <- meltSignals(maz_smb[c("NF cuts", "Mono centers")])
+ggplot(m, aes(position, mean, colour=sample)) + geom_line(size=1.2)
+```
+
+
+### Footprint of KLF4 (Kruppel-like factor 4) is a zinc finger transcription factor
+
+
+```{r}
+k <- meltSignals(klf4_smb[c("NF cuts", "Mono centers")])
+ggplot(k, aes(position, mean, colour=sample)) + geom_line(size=1.2)
+```
+
+
+
