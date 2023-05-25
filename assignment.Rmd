@@ -1,102 +1,242 @@
 ---
-title: 'assignment 3 '
-output:
-  html_document: default
-  pdf_document: default
-date: "2023-03-16"
+title: "assignment"
+output: html_document
+date: "2023-05-25"
 ---
+# Assignment
 
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+1. Plot a heatmap of the methylation levels of the genes in top 5 DMR regions.
+  - hint: use `getMeth(..., regions=...)` and for the heatmap you can adapt the code we used for the promoters.    
+    
+    
+2. Run an enrichment analysis (rGREAT) of the genes within DMRs (see [./data_practical/dmr.rds](https://github.com/ETHZ-INS/ethEpigen2023_materials/tree/main/week11/w11_practical)) vs all genes of chromosome 22.   
+  - Describe what your enrichment analysis is testing exactly & describe the results.   
+    
+Save your assignment in a R markdown named assignment.Rmd, render it, and push the html file to this folder in your github repository
+
+## Load the libraries
+```{r}
+getwd()
 ```
 
 ```{r}
 suppressPackageStartupMessages({
-  library(AnnotationHub)
-  library(Rsubread)
-  library(rtracklayer)
-  library(Biostrings)
-  library(Rfastp)
+  library(GenomicRanges)
   library(epiwraps)
+  library(ggplot2)
+  library(rGREAT)
+  library(AnnotationHub)
+  library(ensembldb)
+  library(bsseq)
+  library(BiocParallel)
+  library(edgeR)
+  library(DMRcate)
+  library(rtracklayer)
+  library(sechm)
+  library(pheatmap)
+  library(viridis)
+  library(data.table)
+  library(SummarizedExperiment)
+  library(limma)
 })
+
+set.seed(40)
+```
+## Load the data
+
+Download:
+```{r, download}
+#options(timeout = 6000)
+#download.file("https://ethz-ins.org/content/w11_practical.zip", "w11_practical.zip")
+#unzip("w11.practical.zip")
+```
+
+### Bsseq object
+The Bisulfite-sequenncing (BS-seq) data we are looking is from the [bsseqData](https://bioconductor.org/packages/release/data/experiment/html/bsseqData.html) package.
+It contains colon cancer samples with 3 patients with each a colon cancer and normal colon sample. 
+Here we only look at chromosome 22. 
+
+```{r, bsseq}
+bs <- readRDS("./w11_practical/bs.rds")
+pData(bs)
+```
+
+## Differential Methylation Testing
+
+
+### Testing
+
+Get annotations (hs):
+```{r}
+# Load annotation hub and retrieve the necessary annotation database
 ah <- AnnotationHub()
+ensdb <- ah[["AH109336"]]
+
+# Define the genomic range for Chromosome 22
+chr22 <- GRanges(seqnames = Rle(c("22")), ranges = IRanges(1, end = 195471971))
+
+# Retrieve genes from the annotation database for Chromosome 22
+genesChr22 <- genes(ensdb, columns = c("gene_seq_start", "gene_seq_end", "gene_name"), filter = GRangesFilter(chr22))
+
+# Set the sequence level style to UCSC
+seqlevelsStyle(genesChr22) <- "UCSC"
+
+```
+
+Retrieve metyhlation levels and visualize:
+```{r, look at bsseq objects}
+# Retrieve methylation data for genes within Chromosome 22
+metG <- bsseq::getMeth(bs, regions = genesChr22, what = "perRegion")
+
+# Set column names of metG to match the column names of bs
+colnames(metG) <- colnames(bs)
+
+# Set row names of metG to gene names
+rownames(metG) <- genesChr22$gene_name
+
+# Remove rows with NA values in metG
+metG <- metG[!is.na(rowSums(metG)),]
+
+# Load required packages for visualization
+library(viridis)
+library(pheatmap)
+
+# Create annotation data frame for coloring
+annotationCol <- as.data.frame(pData(bs)[,c("Type","Pair")])
+rownames(annotationCol) <- colnames(metG)
+
+# Generate heatmap of methylation data
+pheatmap::pheatmap(metG, 
+                   cluster_rows = TRUE,
+                   cluster_cols = FALSE,
+                   annotation_col = annotationCol,
+                   show_rownames = TRUE,
+                   color = rocket(10))
+
+```
+
+Differential methylation testing: 
+```{r, dm testing}
+# Create design matrix for differential methylation analysis
+design <- model.matrix(~Type+Pair, data=pData(bs)) # design matrix
+
+# Adapt design matrix for methylation data
+methdesign <- modelMatrixMeth(design)
+
+# Perform sequencing annotation and differential methylation analysis
+seqAnnot <- sequencing.annotate(bs, methdesign, all.cov=TRUE, coef="Typenormal")
+dmrcateRes <- dmrcate(seqAnnot, C=2, min.cpgs = 10, pcutoff=0.01)
+
+# Extract differentially methylated regions (DMRs)
+dmrRanges <- extractRanges(dmrcateRes, genome="hg38")
+saveRDS(dmrRanges, "./w11_practical/dmr.rds")
+
+# Plot the first DMR
+DMR.plot(dmrRanges, dmr=1, phen.col=c(rep("red", 3), rep("green",3)), CpGs=bs, genome="hg38")
+
+# Select DMR regions with overlapping genes
+dmrRangesGenes <- dmrRanges[!is.na(dmrRanges$overlapping.genes)]
+
 ```
 
 
 
-We will perform the primary analysis of an example dataset, at each step demonstrating the use of both a very standard pipeline, and a full R-based equivalent. Pay attention to which chunks are R or bash code (see header)
+Obtain the coordinates of the genes within DMRs. 
+```{r, get the DM genes}
+# Get the genes within differentially methylated regions (DMRs)
+topIdx <- order(dmrRangesGenes$min_smoothed_fdr)[1:4]
 
-# Downloading the raw reads
+# Extract the gene names from overlapping.genes column
+genesDmr <- unlist(tstrsplit(dmrRangesGenes[topIdx]$overlapping.genes, split=", "))
 
-We download an example dataset which is a ChIP-seq experiment mapping the bindings
-of the factor Myc across the Kc167 Drosophila cell line.
-We download the data from ENCODE:
+# Remove NA values from gene names
+genesDmr <- genesDmr[!is.na(genesDmr)]
 
-```{r, eval=FALSE}
-dir.create("raw")
-download.file("https://www.encodeproject.org/files/ENCFF127RRR/@@download/ENCFF127RRR.fastq.gz", dest="raw/CTCF.fastq.gz")
+# Subset genesChr22 based on the gene names within DMRs
+dmrGenes <- genesChr22[genesChr22$gene_name %in% genesDmr]
+
+# Output the genes within DMRs
+dmrGenes
+
 ```
-### Building a genome index for mapping
-```{r, eval=FALSE}
-# we get the genome sequence from AnnotationHub
-genome <- ah[["AH49674"]]
-# we create a new directory that will contain the genome index
-dir.create("BDGP6_genome")
-# we write the genome sequence in fasta format
-export(import.2bit(genome), "BDGP6_genome/genome.fasta.gz", compress=TRUE)
-# we build a Rsubread index
-Rsubread::buildindex("BDGP6_genome/rsubread", reference="BDGP6_genome/genome.fasta.gz")
-```
+
+# Enrichment analysis (rGREAT) of the genes within DMRs vs all genes of chromosome 22
+
 ```{r}
-dir.create("aligned")
-getwd()
+# Perform enrichment analysis (rGREAT) on the genes within the top 5 DMRs
+job <- submitGreatJob(gr=dmrGenes, bg=genesChr22, species="hg38")
+
+# Retrieve enrichment tables
+res <- getEnrichmentTables(job)
+
+# Get the names of the enrichment tables
+names(res)
+
+# Extract the GO Biological Process table
+bp <- res$`GO Biological Process`
+
+# Display the head of the table
+head(bp)
+
+# Plot the top 15 biological processes
+ggplot(head(bp,15), aes(Hyper_Fold_Enrichment, reorder(breakStrings(name, 10, "\n"), Hyper_Adjp_BH), size=Hyper_Foreground_Region_Hits, color=-log10(Hyper_Adjp_BH))) +
+  geom_point() +
+  scale_color_viridis_c(limits = c(0, 5)) +
+  labs(title = "Biological Processes in the Top 5 DMRs of Chromosome 22",
+       x = "Hyper Fold Enrichment",
+       y = "Name of the Biological Process",
+       colour = "Minus Logarithm of the \nAdjusted Hypergeometric p-Values \n(-log10(Hyper_Adjp_BH))",
+       size = "Hyper Foreground Region Hits") +
+  theme(plot.title = element_text(hjust = 0.5))
+
 ```
-
-# Alignment of reads
-```{r, eval=FALSE}
-align.stats <- Rsubread::align(index="BDGP6_genome/rsubread", type="dna",
-                               readfile1=c("raw/CTCF.fastq.gz/"),
-                               output_file=c("aligned/CTCF.bam"),
-                               nthreads=6, sortReadsByCoordinates=TRUE)
-align.stats
-```
-
-
-Based on the alignment output, there is a total of 3,884,614 reads and 3,515,416 of those reads were mapped, which corresponds to 90.5% of the total reads. Out of the mapped reads, 3,057,440 were uniquely mapped and 457,976 were multi-mapped.
-
-These numbers provide a quantitative measure of the success of the alignment step, and the high mapping rate suggests that the data quality is good.
-
-However, it is worth noting that multi-mapping reads can be a potential source of ambiguity and may need to be further examined in downstream analyses.
 
 ```{r}
-peaks <- callPeaks("aligned/CTCF.bam", fragLength=50L)
-# if we want to save it as a bed file:
-dir.create("peaks")
-rtracklayer::export.bed(peaks, "peaks/peaks.bed")
+# Retrieve all genes within DMRs
+genesDmr_all <- unlist(tstrsplit(dmrRangesGenes$overlapping.genes, split=", "))
+genesDmr_all <- genesDmr_all[!is.na(genesDmr_all)]
+
+# Subset genesChr22 based on the genes within DMRs
+dmrGenes_all <- genesChr22[genesChr22$gene_name %in% genesDmr_all]
+
+# Perform enrichment analysis (rGREAT) on all genes within DMRs
+job <- submitGreatJob(gr=dmrGenes_all, bg=genesChr22, species="hg38")
+
+# Retrieve enrichment tables
+res <- getEnrichmentTables(job)
+
+# Get the names of the enrichment tables
+names(res)
+
+# Extract the GO Biological Process table
+bp <- res$`GO Biological Process`
+
+# Display the head of the table
+head(bp)
+
+# Plot the top 15 biological processes
+ggplot(head(bp,15), aes(Hyper_Fold_Enrichment, reorder(breakStrings(name, 10, "\n"), Hyper_Adjp_BH), size=Hyper_Foreground_Region_Hits, color=-log10(Hyper_Adjp_BH))) +
+  geom_point() +
+  scale_color_viridis_c(limits = c(0, 5)) +
+  labs(title = "Biological Processes in all DMRs of Chromosome 22",
+       x = "Hyper Fold Enrichment",
+       y = "Name of the Biological Process",
+       colour = "Minus Logarithm of the \nAdjusted Hypergeometric p-Values \n(-log10(Hyper_Adjp_BH))",
+       size = "Hyper Foreground Region Hits") +
+  theme(plot.title = element_text(hjust = 0.5))
+
 ```
-The function reported a total of 2873 regions, with 1622 having a false discovery rate (FDR) of less than 0.05.
 
-The output gives a total of 2873 candidate regions with potential enrichment of CTCF binding, and the identified peaks can be further examined in downstream analyses.
+#Interpretation of DMRs in Chromsome 11
 
-```{r}
-peaks
-```
+For the DMR analysis we used bisulfite-sequencing (BS-seq) data from colon cancer samples, including three patients with both colon cancer and normal colon samples. The focus of the analysis is limited to chromosome 22, where I explored the methylation patterns and differential methylation regions. Bisulfite-sequencing (BS-seq) is a widely used method for studying DNA methylation patterns and it allows one to examine the DNA methylation status of individual cytosine residues in DNA.
 
+The enrichment analysis is testing whether the genes within the differentially methylated regions (DMRs) are enriched for any Gene Ontology (GO) Biological Process terms compared to all the genes in chromosome 22. As you can see it assess overrepresentation of specific biological processes within the DMR genes, indicating potential functional implications of the differential methylation.
 
-```{r}
-sorted_peaks <- peaks[order(peaks$log10FE, decreasing = TRUE), ]
-region <- as.character(granges(peaks[812]))
-# specifies the genomic coordinates of the peak of interest in the format chromosome:start-end
-region # 3R:14391367-14391483
-# plot the signal around a specific peak of interest in the ChIP-seq data and visualize the read coverage across the region.
-plotSignalTracks(c(CTCF="aligned/CTCF.bam"), region=region)
-```
+To interpret the results, you can examine the enrichment scores, such as the Hyper_Fold_Enrichment, which indicates the degree of enrichment for each biological process. A higher fold enrichment value suggests a stronger enrichment of the biological process within the DMR genes. In addition you can also look at the Hyper_Foreground_Region_Hits, which represents the number of regions in the foreground gene set associated with each biological process.
+
+In the provided graph, the hyper fold enrichment values are represented on the x-axis. Positive hyper fold enrichment values indicate upregulation or enrichment of a biological process within the differentially methylated regions (DMRs) in cancer patients compared to the background genes. 
+
+By inspecting the points on the graph, one is able to identify processes that have positive hyper fold enrichment values, which indicates upregulation or enrichment in cancer patients. These processes may play a role in the pathogenesis or progression of cancer. 
 
 
-```{r}
-
-region_spec <- "3R:28442014-28442089"
-region_spec
-plotSignalTracks(c(CTCF="aligned/CTCF.bam"), region=region_spec)
-```
-Signal is enriched comapred to it's background but also could be an artefact. 
